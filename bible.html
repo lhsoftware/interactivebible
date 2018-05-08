@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html>
+    <head lang="en">
+        <meta charset="utf-8"> 
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>LH Software - Interactive Bible References</title>
+        <style type="text/css">
+            .highlighted{
+                background-color: yellow;
+                cursor: pointer;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Interactive Bible References</h1>
+        <div style="margin-bottom: 10px; float: right;">
+            <input type="text" id="ref" value="Jude 1" />
+            <button onclick="showBiblePassage(document.getElementById('ref').value,document.getElementById('passage'))">Show Bible Passage</button>
+        </div>
+        <p>This script links bible references in ordinary text and displays the relevant verse(s)</p>
+        <h4>INSTRUCTIONS:</h4>
+        <ul>
+            <li>Type below and include bible references e.g. Genesis 14:18, Leviticus 1, Gen 10, Num 22:22-24, Exodus 4:4,6,9</li>
+            <li>Click <span class="highlighted">highlighted</span> to see verses.</li>
+            <li>You can also display bible passages using the search box above</li>
+        </ul>        
+        <textarea id="content" style="margin: 10px; width: 95%;" rows="6" onkeyup="updateDemo()">In the passage of Genesis 2:14 we can see that the man is good but in Lev 14:12 the man is bad. See Numbers 1 for details or Deut 5:3-7 or Exod 4:4,8,10.</textarea>
+        <div id="demo" style="padding: 10px;margin: 10px; border: 1px solid black;"></div>
+        <div id="passage" style="padding: 10px;margin: 10px; background-color: #CCC;">Bible verse(s) will be shown here</div>    
+        <hr>
+        <button onclick="getBibleAPI()">Get Bible API</button>
+        <div id="bibleAPI"></div>
+    <script>
+        /*
+        Interactive Bible References
+        
+        */
+        
+        function addBibleVerses(translation,book,chapter,verse,text){
+            // Add bible verse to bible object
+            let found = false;
+            for (t=0;t<Bible.data.length;t++){
+                for (b=0;b<Bible.data[t].books.length;b++){
+                    for (c=0;c<Bible.data[t].books[b].totalChapters;c++){
+                        let tTranslationName = Bible.data[t].translation;
+                        let tBookName = Bible.data[t].books[b].book;
+                        let tChapter = Bible.data[t].books[b].chapters[c];
+                        let tChapterName = tChapter.chapter;
+                        
+                        if (book === 'songofsolomon') book = 'songofsongs';   // hack for song
+                        
+                        if (tTranslationName === translation 
+                            && sameBook(tBookName,book) 
+                            && chapter === tChapterName){
+                            tChapter.verses.push({
+                                verse: verse,
+                                text: text
+                            })
+                            found = true;
+                        }
+                    }
+                    if (found) return;
+                }
+                if (found) return;
+            }
+        }
+        
+        function showBiblePassage(ref,element,translation){
+            // Find bible passage using JSON object
+            if (ref === undefined) return "";
+            if (ref === "") return "";
+            if (translation === undefined) translation = Bible.translations[0];
+            
+            let passage = getBiblePassage(ref,element,translation);
+            
+        }
+        
+        function getBiblePassage(ref, element, translation){
+            // Find bible passage using JSON object
+            if (ref === undefined) return "";
+            if (ref === "") return "";
+            if (translation === undefined) translation = Bible.translations[0];
+            
+            // Create blank object to return
+            let obj = {
+                translation:"",
+                book:"",
+                chapter:"",
+                verses:[]
+            };
+              
+            // Format reference and validate
+            let formattedRef = formatBibleRef(ref);
+            if (formattedRef.chapter === "") return obj;
+            
+            let book = formattedRef.book;
+            let chapter = parseInt(formattedRef.chapter);
+            let verse = (formattedRef.verse).toString();
+
+            // Validate
+            if (book === "") return obj;
+            
+            //console.log(book,chapter,verse)
+            let loading = '<img src="loading.gif" title="Loading..." />';
+            element.innerHTML = loading;
+            
+            loadDoc('bibles/kjv/' + formatBookName(book) + '.json','kjv',formatBookName(book),function(){
+                // JSON file loaded
+                // Find bible verse from bible object   
+                
+                // Reload verse as was not loaded before
+                formattedRef = formatBibleRef(ref);
+                verse = (formattedRef.verse).toString();
+                
+                // Loop translations and books to find correct passage
+                for (t=0;t<Bible.data.length;t++){
+                    for (b=0;b<Bible.data[t].books.length;b++){
+                        let translationName = Bible.data[t].translation;
+                        let bookName = Bible.data[t].books[b].book;
+                        let chapterNumber = chapter;
+                        if (chapterNumber > Bible.data[t].books[b].chapters.length) chapterNumber = Bible.data[t].books[b].chapters.length;
+
+                        // Check if translation, book, chapter (and verse(s)) are equal
+                        if (translation.toLowerCase() === translationName.toLowerCase() && 
+                            sameBook(bookName,book) && 
+                            chapter === chapterNumber){
+
+                            // Validate
+                            if(Bible.data[t].books[b].chapters[chapterNumber-1].verses.length === 0) return obj;
+
+                            // Populate object
+                            obj = {
+                                translation:translationName,
+                                book:bookName,
+                                chapter:chapterNumber,
+                                verses:[]
+                            }
+
+                            // Loop verses
+                            let arrayVerses = verse.split(",");
+                            let verseNumber = 0;
+                            let verseText = "";
+
+                            for (av=0;av<arrayVerses.length;av++){
+                                verseNumber = parseInt(arrayVerses[av]);
+                                if (verseNumber > Bible.data[t].books[b].chapters[chapterNumber-1].verses.length) verseNumber = Bible.data[t].books[b].chapters[chapterNumber-1].verses.length;
+                                verseText = Bible.data[t].books[b].chapters[chapterNumber-1].verses[verseNumber-1].text
+
+                                obj.verses.push({
+                                    verse:verseNumber,
+                                    text:verseText
+                                })
+                            }
+                            
+                            // Display passage
+                            let display = "";
+                            display += `${obj.book} ${obj.chapter}`;
+
+                            for (v=0;v<obj.verses.length;v++){
+                                display += `\nv${obj.verses[v].verse}: ${obj.verses[v].text}`;
+                            }
+                            
+                            element.innerHTML = "";
+                            element.innerText = display;
+
+                            return obj;
+                        }
+                    }
+                }
+            });
+            
+            return obj;            
+        }
+                
+        function loadDoc(file,translation,book,callback) {
+            // Load json file
+            
+            // Check if already loaded
+            if (bookLoaded(translation,book)){callback();return;}
+            
+            var xhttp = new XMLHttpRequest();
+            xhttp.onreadystatechange = function() {
+                if (this.readyState == 4){//} && this.status == 200) {
+                    var response = this.responseText;
+                    json = JSON.parse(response);
+                    
+                    // Added to loaded
+                    Bible.loaded.push({
+                        translation:translation.toLowerCase(),
+                        book:book.toLowerCase()
+                    });
+                    
+                    // Add verses
+                    var str = "";
+                    for (i=0;i<json.verses.length;i++){
+                        //str += json.verses[i].book_name + " " + json.verses[i].chapter + ":" + json.verses[i].verse + " " + json.verses[i].text.replace(/\n/g,"<br>");
+                        addBibleVerses(json.translation_id,json.verses[i].book_name,parseInt(json.verses[i].chapter),json.verses[i].verse,json.verses[i].text);
+                    }
+                    
+                    callback();
+                }
+            };
+            
+            xhttp.open("GET", file, true);
+            xhttp.send();
+        }
+        
+        function bookLoaded(translation,book){
+            // Check if book already loaded
+            for (l=0;l<Bible.loaded.length;l++){
+                if (Bible.loaded[l].translation === translation.toLowerCase() && 
+                   formatBookName(Bible.loaded[l].book) === formatBookName(book)) return true;
+            }
+            return false;
+        }
+        
+        function validBibleBook(book){
+            // Check if bible book is valid against Bible...books[x].book
+            // Use substring e.g. book = Gen, data = gen(esis)
+            for (t=0;t<Bible.data.length;t++){
+                for (b=0;b<Bible.data[t].books.length;b++){
+                    let bibleBook = Bible.data[t].books[b].book;
+                    if (sameBook(bibleBook,book)) return bibleBook;
+                }
+            }
+            return "";
+        }
+        
+        function formatBibleRef(ref){
+            // Formats bible reference into 
+            // book,chapter,verse(s)
+
+            // Formats 
+            // a) book chapter:verse(s)
+            // b) book chapter
+            // c) bo(ok) chapter/bo(ok) chapter:verse(s) e.g. Gen 1:2
+            
+            let obj = {
+                book:"",
+                chapter:0,
+                verse:0
+            }
+            
+            let tempBook = "";
+            let tempChapter = "";
+            let tempVerse = "";
+            let tempVerses;
+            let totalVerses = 0;
+            
+            let arrayRef = ref.split(":");
+            let arrayBookChapter;
+            
+            if (ref.indexOf(':') > -1){
+                // Format a)
+                
+                // Create verses
+                // i) , comma delimter
+                // ii) - hypen delimiter
+                
+                tempVerse = arrayRef[1];
+                
+                // i)
+                if (arrayRef[1].indexOf(',') > -1){
+                    tempVerse = "";
+                    tempVerses = arrayRef[1].split(",");
+                    for (t=0;t<tempVerses.length;t++){
+                        tempVerse += tempVerses[t].toString() + ",";
+                    }
+                    tempVerse = tempVerse.substr(0,(tempVerse.length-1));
+                }
+                
+                // ii)
+                if (arrayRef[1].indexOf('-') > -1){
+                    tempVerse = "";
+                    tempVerses = arrayRef[1].split("-");
+                    let verseLower = parseInt(tempVerses[0]);
+                    let verseUpper = parseInt(tempVerses[tempVerses.length-1]);
+                    if (verseUpper < verseLower) return obj;
+                    if (verseLower < 1) verseLower = 1;
+                    if (verseUpper > 176) verseUpper = 176;// max largest verses in Bible 176 (Psalm 119)
+                    
+                    for (t=verseLower;t<=verseUpper;t++){
+                        tempVerse += t + ",";
+                    }
+                    tempVerse = tempVerse.substr(0,(tempVerse.length-1));
+                }
+                
+                // Create book and chapter
+                arrayBookChapter = arrayRef[0].split(" ");
+                for (let i=0;i<(arrayBookChapter.length-1);i++){
+                    tempBook += arrayBookChapter[i];
+                }
+                tempBook = tempBook.trim();
+                tempChapter = arrayBookChapter[arrayBookChapter.length-1];
+            }else{
+                // Format b) + c)
+                // Show all chapter
+                arrayBookChapter = ref.split(" ");
+                for (let i=0;i<(arrayBookChapter.length-1);i++){
+                    tempBook += arrayBookChapter[i];
+                }
+                
+                tempBook = tempBook.trim();
+                tempChapter = arrayBookChapter[arrayBookChapter.length-1];
+                if (isNaN(tempChapter)) return obj;
+
+                // Create verses
+                tempVerse = "";
+              
+                // Get total verses in chapter
+                let tempChapterNumber = tempChapter;
+                 
+                for (t=0;t<Bible.data.length;t++){
+                    for (b=0;b<Bible.data[t].books.length;b++){
+                        // Compare books 
+                        if (sameBook(Bible.data[t].books[b].book,tempBook)){
+                            tempChapterNumber = tempChapter;
+                            if (tempChapterNumber > Bible.data[t].books[b].chapters.length) tempChapterNumber = Bible.data[t].books[b].chapters.length;
+                            totalVerses = Bible.data[t].books[b].chapters[tempChapterNumber-1].verses.length;
+                            break;
+                        }
+                        if (totalVerses > 0) break;
+                    }
+                    if (totalVerses > 0) break;
+                }
+
+                // Create tempVerse
+                for (t=1;t<=totalVerses;t++){
+                    tempVerse += t.toString() + ",";
+                }
+                tempVerse = tempVerse.substr(0,(tempVerse.length-1));
+            }
+            
+            // Valid book?
+            tempBook = validBibleBook(tempBook);
+
+            // Return viable object bible ref
+            obj = {
+                book:tempBook,
+                chapter:parseInt(tempChapter),
+                verse:(tempVerse)
+            }
+            
+            return obj;
+        }
+        
+        function sameBook(book1,book2){
+            // Compares two books by their length
+            var bk1 = formatBookName(book1);
+            var bk2 = formatBookName(book2);
+            var shorter = (bk1.length < bk2.length)?bk1:bk2;
+
+            bk1 = bk1.substr(0,shorter.length);
+            bk2 = bk2.substr(0,shorter.length);
+            
+            if (bk1 === bk2) return true;            
+            return false;
+        }
+        
+        function highlightVerses(str){
+            let regex = /((?:[1234]\s?)?[a-zа-я]+)(\s?\d+(?::(?:\d+[—–-]\d+|\d+)(?:,\d+[—–-]\d+|,\d+)*(?:;\s?\d+(?::(?:\d+[—–-]\d+|\d+)(?:,\d+[—–-]\d+|,\d+)*|;))*)?)/ig;
+
+            let newStr = "";
+            let first=0;
+            let last=0;
+            
+            while ((m = regex.exec(str)) !== null) {
+                // This is necessary to avoid infinite loops with zero-width matches
+                if (m.index === regex.lastIndex) {
+                    regex.lastIndex++;
+                }
+
+                // The result can be accessed through m
+                m.forEach((match, groupIndex) => {
+                    // Only highlight full matches                    
+                    if (groupIndex == 0){
+                        last = m.index;
+                        newStr += str.substring(first, last);
+                        
+                        // Ensure it is a valid bible reference
+                        let ref = formatBibleRef(match);
+                        if (ref.book !== ""){
+                            newStr += `<span class="highlighted" onclick="showBiblePassage('${match}',document.getElementById('passage'))">${match}</a></span>`;
+                        }else{
+                            newStr += `${match}`;
+                        }
+                        //console.log(match,first,last);
+                        first = regex.lastIndex;
+                    }
+                });
+            }
+            newStr += str.substring(first, str.length);
+            return newStr;
+        }
+        
+        function formatBookName(book){
+            // For comparisons only - remove all spaces and lowercase it
+            book = book.replace(/\s/g, '').toLowerCase();
+            return book;
+        }
+        
+        function updateDemo(){
+            let demo = document.getElementById('demo');
+            let content = document.getElementById('content');
+
+            demo.innerText = content.value;
+
+            // Highlight bible ref(s)
+            demo.innerHTML = highlightVerses(demo.innerText);
+        }
+        
+        // -----------------------------------------------------------------------        
+        function getBibleAPI(){
+            // used with bible-api.com
+            // copy/paste into browser and save json contents in
+            // assets/bibles/{translation}/{book}.json
+            var urls = "";
+            var url = "";
+            for (t = 0; t<Bible.data.length;t++){
+                for (b = 0;b<Bible.data[t].books.length;b++){
+                    url = "";
+                    for (c=1;c<=Bible.data[t].books[b].totalChapters;c++){
+                        url += c + ",";
+                    }
+                    
+                    // Jude hack
+                    if (Bible.data[t].books[b].book.toLowerCase() === "jude"){
+                        url = "1:"
+                        for (c=1;c<=25;c++){
+                            url += c + ",";
+                        }
+                    }
+                    
+                    url = url.substr(0,(url.length-1));
+                    url = "http://bible-api.com/" + Bible.data[t].books[b].book + "%20" + url + "?translation=" + Bible.data[t].translation;
+                    urls += url + "\n";
+
+                    var input = document.createElement("input");
+                    input.style.width = "80%";
+                    input.style.margin = "5px";
+                    input.style.fontSize = "16pt";
+                    input.addEventListener("click",function(){
+                        this.select();
+                    })
+                    input.value = url;
+                    document.getElementById("bibleAPI").appendChild(input);
+
+                }
+                urls = urls + "\n";
+            }
+        }
+        
+        // -----------------------------------------------------------------------
+        // Create bible object
+        var Bible = {
+            translations:["kjv","web"],
+            loaded:[],
+            data:[]
+        }
+        
+        // Populate chapters
+        for (t=0;t<Bible.translations.length;t++){
+            // Populate books and total chapters in book
+            Bible.data.push({translation:Bible.translations[t],
+            books:[
+                {book:"Genesis",totalChapters:50,chapters:[]},{book:"Exodus",totalChapters:40,chapters:[]},{book:"Leviticus",totalChapters:27,chapters:[]},{book:"Numbers",totalChapters:36,chapters:[]},{book:"Deuteronomy",totalChapters:34,chapters:[]},{book:"Joshua",totalChapters:24,chapters:[]},{book:"Judges",totalChapters:21,chapters:[]},{book:"Ruth",totalChapters:4,chapters:[]},{book:"1 Samuel",totalChapters:31,chapters:[]},{book:"2 Samuel",totalChapters:24,chapters:[]},{book:"1 Kings",totalChapters:22,chapters:[]},{book:"2 Kings",totalChapters:25,chapters:[]},{book:"1 Chronicles",totalChapters:29,chapters:[]},{book:"2 Chronicles",totalChapters:36,chapters:[]},{book:"Ezra",totalChapters:10,chapters:[]},{book:"Nehemiah",totalChapters:13,chapters:[]},{book:"Esther",totalChapters:10,chapters:[]},{book:"Job",totalChapters:42,chapters:[]},{book:"Psalms",totalChapters:150,chapters:[]},{book:"Proverbs",totalChapters:31,chapters:[]},{book:"Ecclesiastes",totalChapters:12,chapters:[]},{book:"Song of Songs",totalChapters:8,chapters:[]},{book:"Isaiah",totalChapters:66,chapters:[]},{book:"Jeremiah",totalChapters:52,chapters:[]},{book:"Lamentations",totalChapters:5,chapters:[]},{book:"Ezekiel",totalChapters:48,chapters:[]},{book:"Daniel",totalChapters:12,chapters:[]},{book:"Hosea",totalChapters:14,chapters:[]},{book:"Joel",totalChapters:3,chapters:[]},{book:"Amos",totalChapters:9,chapters:[]},{book:"Obadiah",totalChapters:1,chapters:[]},{book:"Jonah",totalChapters:4,chapters:[]},{book:"Micah",totalChapters:7,chapters:[]},{book:"Nahum",totalChapters:3,chapters:[]},{book:"Habakkuk",totalChapters:3,chapters:[]},{book:"Zephaniah",totalChapters:3,chapters:[]},{book:"Haggai",totalChapters:2,chapters:[]},{book:"Zechariah",totalChapters:14,chapters:[]},{book:"Malachi",totalChapters:4,chapters:[]},{book:"Matthew",totalChapters:28,chapters:[]},{book:"Mark",totalChapters:16,chapters:[]},{book:"Luke",totalChapters:24,chapters:[]},{book:"John",totalChapters:21,chapters:[]},{book:"Acts",totalChapters:28,chapters:[]},{book:"Romans",totalChapters:16,chapters:[]},{book:"1 Corinthians",totalChapters:16,chapters:[]},{book:"2 Corinthians",totalChapters:13,chapters:[]},{book:"Galatians",totalChapters:6,chapters:[]},{book:"Ephesians",totalChapters:6,chapters:[]},{book:"Philippians",totalChapters:4,chapters:[]},{book:"Colossians",totalChapters:4,chapters:[]},{book:"1 Thessalonians",totalChapters:5,chapters:[]},{book:"2 Thessalonians",totalChapters:3,chapters:[]},{book:"1 Timothy",totalChapters:6,chapters:[]},{book:"2 Timothy",totalChapters:4,chapters:[]},{book:"Titus",totalChapters:3,chapters:[]},{book:"Philemon",totalChapters:1,chapters:[]},{book:"Hebrews",totalChapters:13,chapters:[]},{book:"James",totalChapters:5,chapters:[]},{book:"1 Peter",totalChapters:5,chapters:[]},{book:"2 Peter",totalChapters:3,chapters:[]},{book:"1 John",totalChapters:5,chapters:[]},{book:"2 John",totalChapters:1,chapters:[]},{book:"3 John",totalChapters:1,chapters:[]},{book:"Jude",totalChapters:1,chapters:[]},{book:"Revelation",totalChapters:22,chapters:[]}
+            ]});
+//console.log(Bible.data[0].translations[t].books[0].totalChapters)
+        }
+        
+        for (t=0;t<Bible.data.length;t++){
+            for (b=0;b<Bible.data[t].books.length;b++){
+                for (c=0;c<Bible.data[t].books[b].totalChapters;c++){
+                    Bible.data[t].books[b].chapters.push({
+                        chapter: (c+1),
+                        verses: []
+                    });
+                }
+            }
+        }
+        
+        // -----------------------------------------------------------------------
+        
+        // Demo
+        updateDemo();
+        
+    </script>
+    </body>
+</html>
